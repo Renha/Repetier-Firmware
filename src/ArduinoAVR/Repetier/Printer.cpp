@@ -1714,7 +1714,8 @@ int32_t Distortion::getMatrix(int index) const
 void Distortion::setMatrix(int32_t val, int index)
 {
 #if DISTORTION_PERMANENT
-    EEPROM::setZCorrection(val, index);
+    //EEPROM::setZCorrection(val, index);
+    HAL::eprSetInt32(2048 + (index << 2), val);
 #else
     matrix[index] = val;
 #endif
