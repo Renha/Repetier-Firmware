@@ -1039,7 +1039,7 @@ is at least molten. After havong some complains that the extruder does not work,
 it 0 as default.
 */
 
-#define MIN_EXTRUDER_TEMP 120
+#define MIN_EXTRUDER_TEMP 0
 
 /** \brief Enable advance algorithm.
 
