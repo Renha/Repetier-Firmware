@@ -67,6 +67,7 @@ typedef char prog_char;
 #define pgm_read_word_near(addr) pgm_read_word(addr)
 #define pgm_read_dword(addr) (*(const unsigned long *)(addr))
 #define pgm_read_dword_near(addr) pgm_read_dword(addr)
+#define _BV(x) (1 << (x))
 
 #define FSTRINGVALUE(var,value) const char var[] PROGMEM = value;
 #define FSTRINGVAR(var) static const char var[] PROGMEM;
@@ -204,6 +205,8 @@ class InterruptProtectedBlock {
 #define EEPROM_OFFSET               0
 #define SECONDS_TO_TICKS(s) (unsigned long)(s*(float)F_CPU)
 #define ANALOG_INPUT_SAMPLE 6
+#define ANALOG_INPUT_MEDIAN 10
+
 // Bits of the ADC converter
 #define ANALOG_INPUT_BITS 12
 #define ANALOG_REDUCE_BITS 0

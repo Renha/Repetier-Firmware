@@ -35,11 +35,12 @@ extern long bresenham_step();
 #define NUM_ADC_SAMPLES 2 + (1 << ANALOG_INPUT_SAMPLE)
 #if ANALOG_INPUTS > 0
 int32_t osAnalogInputBuildup[ANALOG_INPUTS];
-#endif
-
+int32_t osAnalogSamples[ANALOG_INPUTS][ANALOG_INPUT_MEDIAN];
 static int32_t adcSamplesMin[ANALOG_INPUTS];
 static int32_t adcSamplesMax[ANALOG_INPUTS];
-static int adcCounter = 0;
+static int adcCounter = 0,adcSamplePos = 0;
+#endif
+
 static   uint32_t  adcEnable = 0;
 
 char HAL::virtualEeprom[EEPROM_BYTES];  
@@ -168,6 +169,8 @@ void HAL::analogStart(void)
       adcSamplesMin[i] = 100000;
       adcSamplesMax[i] = 0;
       adcEnable |= (0x1u << osAnalogInputChannels[i]);
+      for(int j = 0; j < ANALOG_INPUT_MEDIAN; j++)
+        osAnalogSamples[i][j] = 2048; // we want to prevent early error from bad starting values
   }
   // enable channels
   ADC->ADC_CHER = adcEnable;
@@ -851,8 +854,8 @@ void PWM_TIMER_VECTOR ()
         if((pwm_cooler_pos_set[5] = extruder[5].coolerPWM)>0) WRITE(EXT5_EXTRUDER_COOLER_PIN, 1);
 #endif
 #endif
-#if FAN_BOARD_PIN>-1
-        if((pwm_pos_set[NUM_EXTRUDER + 1] = pwm_pos[NUM_EXTRUDER+1]) > 0) WRITE(FAN_BOARD_PIN, 1);
+#if FAN_BOARD_PIN > -1 && !defined(SHARED_COOLER_BOARD_EXT)
+        if((pwm_pos_set[NUM_EXTRUDER + 1] = pwm_pos[NUM_EXTRUDER + 1]) > 0) WRITE(FAN_BOARD_PIN, 1);
 #endif
 #if FAN_PIN>-1 && FEATURE_FAN_CONTROL
         if((pwm_pos_set[NUM_EXTRUDER + 2] = pwm_pos[NUM_EXTRUDER + 2]) > 0) WRITE(FAN_PIN, 1);
@@ -942,7 +945,7 @@ void PWM_TIMER_VECTOR ()
 #endif
 #endif
 #endif
-#if FAN_BOARD_PIN > -1
+#if FAN_BOARD_PIN > -1 && !defined(SHARED_COOLER_BOARD_EXT)
 #if PDM_FOR_COOLER
     pulseDensityModulate(FAN_BOARD_PIN, pwm_pos[NUM_EXTRUDER + 1], pwm_pos_set[NUM_EXTRUDER + 1], false);
 #else
@@ -991,25 +994,20 @@ void PWM_TIMER_VECTOR ()
           osAnalogInputBuildup[i] = osAnalogInputBuildup[i] + (1 << (ANALOG_INPUT_SAMPLE - 1)) - (adcSamplesMin[i] + adcSamplesMax[i]);
           adcSamplesMin[i] = 100000;
           adcSamplesMax[i] = 0;
-#if ANALOG_INPUT_BITS + ANALOG_INPUT_SAMPLE < 12
-            osAnalogInputValues[i] =
-                osAnalogInputBuildup[i] <<
-                (12 - ANALOG_INPUT_BITS - ANALOG_INPUT_SAMPLE);
-#endif
-#if ANALOG_INPUT_BITS + ANALOG_INPUT_SAMPLE > 12
-            osAnalogInputValues[i] =
-                osAnalogInputBuildup[i] >>
-                (ANALOG_INPUT_BITS + ANALOG_INPUT_SAMPLE - 12);
-#endif
-#if ANALOG_INPUT_BITS + ANALOG_INPUT_SAMPLE == 12
-            osAnalogInputValues[i] =
-                osAnalogInputBuildup[i];
-#endif
-            osAnalogInputBuildup[i] = 0;
+          osAnalogSamples[i][adcSamplePos] = osAnalogInputBuildup[i] >> ANALOG_INPUT_SAMPLE;
+          int sum = 0;
+          for(int j = 0; j < ANALOG_INPUT_MEDIAN; j++)
+            sum += osAnalogSamples[i][j];
+          osAnalogInputValues[i] = sum / ANALOG_INPUT_MEDIAN;
+          osAnalogInputBuildup[i] = 0;
         } // adcCounter >= NUM_ADC_SAMPLES
       } // for i
-      if(adcCounter >= NUM_ADC_SAMPLES)
+      if(adcCounter >= NUM_ADC_SAMPLES) {
           adcCounter = 0;
+          adcSamplePos++;
+          if(adcSamplePos >= ANALOG_INPUT_MEDIAN)
+            adcSamplePos = 0;
+      }
       ADC->ADC_CR = ADC_CR_START; // reread values
     }
 #endif // ANALOG_INPUTS > 0
