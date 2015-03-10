@@ -92,6 +92,19 @@ setpe per mm and heater manager settings in extruder 0 are used! */
 //#define FAN_PIN   4  // Extruder 2 uses the default fan output, so move to an other pin
 //#define EXTERNALSERIAL  use Arduino serial library instead of build in. Requires more ram, has only 63 byte input buffer.
 
+/* 
+We can connect BlueTooth to serial converter module directly to boards based on AtMega2560 or AtMega1280 and some boards based on AtMega2561, AtMega1281 or AtMega1284p
+- On RUMBA boards connect BT to pin 11 and 12 of X3 connector, then set BLUETOOTH_SERIAL to 3
+- On RAMBO boards connect BT to pins 5,6 or 7,8 or 9,10 on Serial connector, then accordingly set BLUETOOTH_SERIAL to 1,2 or 3
+- On RAMPS we must remap Y_ENDSTOPS pins or Z_ENDSTOPZ pins or LCD_ENABLE and LCD_RS pins to another pins, and connect BT to:
+  a) signals of Y_MIN, Y_MAX, then set BLUETOOTH_SERIAL to 3 (RX from BT to Y_MIN, TX from BT to Y_MAX)
+  b) signals of Z_MIN, Z_MAX, then set BLUETOOTH_SERIAL to 1 (RX from BT to Z_MIN, TX from BT to Z_MAX)
+  c) pin 17 and 18 of AUX4 connector, then set BLUETOOTH_SERIAL to 2 (RX from BT to AUX4 p18, TX from BT to AUX4 p17)
+  Comment out or set the BLUETOOTH_SERIAL to 0 or -1 to disable this feature.
+*/
+#define BLUETOOTH_SERIAL   -1                      // Port number (1..3) - For RUMBA use 3
+#define BLUETOOTH_BAUD     115200                 // communication speed
+
 // Uncomment the following line if you are using arduino compatible firmware made for Arduino version earlier then 1.0
 // If it is incompatible you will get compiler errors about write functions not beeing compatible!
 //#define COMPAT_PRE1
@@ -191,6 +204,8 @@ Overridden if EEPROM activated.*/
 // because at startup you already need 7 seconds until heater starts to rise temp. for sensor
 // then you have 3 seconds of increased heating to reach 1°C.
 #define DECOUPLING_TEST_MIN_TEMP_RISE 1
+// Set to 1 if you want firmware to kill print on decouple
+#define KILL_IF_SENSOR_DEFECT 1
 // for each extruder, fan will stay on until extruder temperature is below this value
 #define EXTRUDER_FAN_COOL_TEMP 50
 // Retraction for sd pause over lcd
@@ -1168,6 +1183,17 @@ WARNING: Servos can draw a considerable amount of current. Make sure your system
 #define SERVO1_PIN 6
 #define SERVO2_PIN 5
 #define SERVO3_PIN 4
+/* for set servo(s) at designed neutral position at power-up. Values < 500 mean no start position */
+#define SERVO0_NEUTRAL_POS  -1
+#define SERVO1_NEUTRAL_POS  -1
+#define SERVO2_NEUTRAL_POS  -1
+#define SERVO3_NEUTRAL_POS  -1
+/** Set to servo number +1 to control that servo in ui menu. 0 disables ui control. */
+#define UI_SERVO_CONTROL 0
+
+/** Some fans won't start for low values, but would run if started with higher power at the beginning.
+This defines the full power duration before returning to set value. Time is in milliseconds */
+#define FAN_KICKSTART_TIME  200
 
 /* A watchdog resets the printer, if a signal is not send within predifined time limits. That way we can be sure that the board
 is always running and is not hung up for some unknown reason. */
@@ -1185,11 +1211,11 @@ is always running and is not hung up for some unknown reason. */
 
 // Waits for a signal to start. Valid signals are probe hit and ok button.
 // This is needful if you have the probe trigger by hand.
-#define Z_PROBE_WAIT_BEFORE_TEST 1
+#define Z_PROBE_WAIT_BEFORE_TEST 0
 /** Speed of z-axis in mm/s when probing */
 #define Z_PROBE_SPEED 2
 #define Z_PROBE_XY_SPEED 150
-#define Z_PROBE_SWITCHING_DISTANCE 1.5 // Distance to safely switch off probe
+#define Z_PROBE_SWITCHING_DISTANCE 1.5 // Distance to safely switch off probe after it was activated
 #define Z_PROBE_REPETITIONS 5 // Repetitions for probing at one point.
 /** The height is the difference between activated probe position and nozzle height. */
 #define Z_PROBE_HEIGHT 39.91
@@ -1329,6 +1355,8 @@ The following settings override uiconfig.h!
 14 or CONTROLLER_OPENHARDWARE_LCD2004 = OpenHardware.co.za LCD2004 V2014
 15 or CONTROLLER_SANGUINOLOLU_PANELOLU2 = Sanguinololu + Panelolu2
 16 or CONTROLLER_GAMEDUINO2 (in development)
+17 or CONTROLLER_MIREGLI 17
+18 or CONTROLLER_GATE_3NOVATICA Gate Controller from 3Novatica
 */
 #define FEATURE_CONTROLLER 5
 
@@ -1343,7 +1371,9 @@ Select the language to use.
 6 = Swedish
 7 = French
 8 = Czech
+<<<<<<< HEAD
 13 = SeeMeCNC Customized LCCD Menu
+9 = Polish
 */
 #define UI_LANGUAGE 13
 
@@ -1375,6 +1405,9 @@ Select an encoder speed from 0 = fastest to 2 = slowest that results in one menu
 */
 #define UI_ENCODER_SPEED 1
 
+// Set to 1 to reverse encoder direction
+#define UI_REVERSE_ENCODER 0
+
 /* There are 2 ways to change positions. You can move by increments of 1/0.1 mm resulting in more menu entries
 and requiring many turns on your encode. The alternative is to enable speed dependent positioning. It will change
 the move distance depending on the speed you turn the encoder. That way you can move very fast and very slow in the
@@ -1382,6 +1415,10 @@ same setting.
 
 */
 #define UI_SPEEDDEPENDENT_POSITIONING 1
+
+/** If set to 1 faster turning the wheel makes larger jumps. Helps for faster navgation. */
+#define UI_DYNAMIC_ENCODER_SPEED 0          // enable dynamic rotary encoder speed
+
 
 /** \brief bounce time of keys in milliseconds */
 #define UI_KEY_BOUNCETIME 10
@@ -1419,6 +1456,17 @@ Values must be in range 1..255
 #define UI_SET_MAX_EXTRUDER_TEMP   300
 #define UI_SET_EXTRUDER_FEEDRATE 2 // mm/sec
 #define UI_SET_EXTRUDER_RETRACT_DISTANCE 3 // mm
+
+/*
+#define USER_KEY1_PIN     UI_DISPLAY_D5_PIN      // D5 to display (not used for graphics controller), change to other pin if you use character LCD !
+#define USER_KEY1_ACTION  UI_ACTION_FAN_SUSPEND
+#define USER_KEY2_PIN     UI_DISPLAY_D6_PIN      // D6 to display (not used for graphics controller)...
+#define USER_KEY2_ACTION  UI_ACTION_SD_PRI_PAU_CONT
+#define USER_KEY3_PIN     UI_DISPLAY_D7_PIN      // D7 to display (not used for graphics controller)...
+#define USER_KEY3_ACTION  UI_ACTION_LIGHTS_ONOFF
+#define USER_KEY4_PIN     -1
+#define USER_KEY4_ACTION  UI_ACTION_DUMMY
+*/
 
 #endif
 

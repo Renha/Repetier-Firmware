@@ -18,8 +18,11 @@ extern uint8_t manageMonitor;
 #define HTR_DEADTIME 3
 
 #define TEMPERATURE_CONTROLLER_FLAG_ALARM 1
-#define TEMPERATURE_CONTROLLER_FLAG_DECOUPLE_FULL 2 //< Full heating enabled
+#define TEMPERATURE_CONTROLLER_FLAG_DECOUPLE_FULL 2  //< Full heating enabled
 #define TEMPERATURE_CONTROLLER_FLAG_DECOUPLE_HOLD 4  //< Holding target temperature
+#define TEMPERATURE_CONTROLLER_FLAG_SENSDEFECT    8  //< Indicating sensor defect
+#define TEMPERATURE_CONTROLLER_FLAG_SENSDECOUPLED 16 //< Indicating sensor decoupling
+#define TEMPERATURE_CONTROLLER_FLAG_JAM           32 //< Indicates a jammed filament
 
 /** TemperatureController manages one heater-temperature sensore loop. You can have up to
 4 loops allowing pid/bang bang for up to 3 extruder and the heated bed.
@@ -56,7 +59,6 @@ public:
     millis_t lastDecoupleTest;  ///< Last time of decoupling sensor-heater test
     float  lastDecoupleTemp;  ///< Temperature on last test
     millis_t decoupleTestPeriod; ///< Time between setting and testing decoupling.
-
 
     void setTargetTemperature(float target);
     void updateCurrentTemperature();
@@ -111,15 +113,74 @@ public:
     {
         setDecoupleFull(false);
     }
+    inline bool isSensorDefect()
+    {
+        return flags & TEMPERATURE_CONTROLLER_FLAG_SENSDEFECT;
+    }
+    inline bool isSensorDecoupled()
+    {
+        return flags & TEMPERATURE_CONTROLLER_FLAG_SENSDECOUPLED;
+    }
+    inline bool isJammed()
+    {
+        return flags & TEMPERATURE_CONTROLLER_FLAG_JAM;
+    }
+    inline void setJammed(bool on)
+    {
+        if(on) flags |= TEMPERATURE_CONTROLLER_FLAG_JAM;
+        else flags &= ~(TEMPERATURE_CONTROLLER_FLAG_JAM);
+    }
+
 #if TEMP_PID
-    void autotunePID(float temp,uint8_t controllerId,bool storeResult);
+    void autotunePID(float temp,uint8_t controllerId,int maxCycles,bool storeResult);
 #endif
 };
-
 class Extruder;
 extern Extruder extruder[];
 
+#if EXTRUDER_JAM_CONTROL
+#ifdef DEBUG_JAM
+#define _TEST_EXTRUDER_JAM(x,pin) {\
+        uint8_t sig = READ(pin);extruder[x].jamStepsSinceLastSignal+=extruder[x].jamLastDir;\
+        if(extruder[x].jamLastSignal != sig && abs(extruder[x].jamStepsSinceLastSignal) > JAM_MIN_STEPS) {\
+          /*if(!extruder[x].isWaitJamStartcount())*/ {Com::printFLN(PSTR("JS:"),(int32_t)extruder[x].jamStepsSinceLastSignal);}\
+          extruder[x].jamStepsSinceLastSignal = 0; \
+          extruder[x].jamLastSignal = sig;\
+        } else if(abs(extruder[x].jamStepsSinceLastSignal) > JAM_ERROR_STEPS) \
+            extruder[x].tempControl.setJammed(true);\
+    }
+#else
+/*#define _TEST_EXTRUDER_JAM(x,pin) {\
+        uint8_t sig = READ(pin);extruder[x].jamStepsSinceLastSignal++;\
+        if(extruder[x].jamLastSignal != sig) {\
+          if(!extruder[x].isWaitJamStartcount() && extruder[x].jamStepsSinceLastSignal < JAM_ERROR_STEPS) \
+                extruder[x].tempControl.setJammed(false); \
+          extruder[x].setWaitJamStartcount(false); \
+          extruder[x].jamStepsSinceLastSignal = 0; \
+          extruder[x].jamLastSignal = sig;\
+        } else if(!extruder[x].isWaitJamStartcount() && extruder[x].jamStepsSinceLastSignal > JAM_ERROR_STEPS) \
+            extruder[x].tempControl.setJammed(true);\
+    }*/
+#define _TEST_EXTRUDER_JAM(x,pin) {\
+        uint8_t sig = READ(pin);extruder[x].jamStepsSinceLastSignal+=extruder[x].jamLastDir;\
+        if(extruder[x].jamLastSignal != sig && abs(extruder[x].jamStepsSinceLastSignal) > JAM_MIN_STEPS) {\
+          extruder[x].jamStepsSinceLastSignal = 0; \
+          extruder[x].jamLastSignal = sig;\
+        } else if(abs(extruder[x].jamStepsSinceLastSignal) > JAM_ERROR_STEPS) \
+            extruder[x].tempControl.setJammed(true);\
+    }
+#endif
+#define ___TEST_EXTRUDER_JAM(x,y) _TEST_EXTRUDER_JAM(x,y)
+#define __TEST_EXTRUDER_JAM(x) ___TEST_EXTRUDER_JAM(x,EXT ## x ## _JAM_PIN)
+#define TEST_EXTRUDER_JAM(x) __TEST_EXTRUDER_JAM(x)
+#define RESET_EXTRUDER_JAM(x,dir) extruder[x].jamLastDir = dir ? 1 : -1;
+#else
+#define TEST_EXTRUDER_JAM(x)
+#define RESET_EXTRUDER_JAM(x,dir)
+#endif
+
 #define EXTRUDER_FLAG_RETRACTED 1
+#define EXTRUDER_FLAG_WAIT_JAM_STARTCOUNT 2 ///< Waiting for the first signal to start counting
 
 /** \brief Data to drive one extruder.
 
@@ -136,6 +197,7 @@ public:
 #if MIXING_EXTRUDER > 0
     static int mixingS; ///< Sum of all weights
     static uint8_t mixingDir; ///< Direction flag
+    static uint8_t activeMixingExtruder;
 #endif
     uint8_t id;
     int32_t xOffset;
@@ -172,6 +234,26 @@ public:
     uint8_t coolerPWM; ///< current PWM setting
     float diameter;
     uint8_t flags;
+#if EXTRUDER_JAM_CONTROL
+    int16_t jamStepsSinceLastSignal; // when wa sthe last signal
+    uint8_t jamLastSignal; // what was the last signal
+    int8_t jamLastDir;
+#endif
+
+    // Methods here
+
+#if EXTRUDER_JAM_CONTROL
+    inline bool isWaitJamStartcount()
+    {
+        return flags & EXTRUDER_FLAG_WAIT_JAM_STARTCOUNT;
+    }
+    inline void setWaitJamStartcount(bool on)
+    {
+        if(on) flags |= EXTRUDER_FLAG_WAIT_JAM_STARTCOUNT;
+        else flags &= ~(EXTRUDER_FLAG_WAIT_JAM_STARTCOUNT);
+    }
+    static void markAllUnjammed();
+#endif
 #if MIXING_EXTRUDER > 0
     static void setMixingWeight(uint8_t extr,int weight);
     static void step();
@@ -184,57 +266,87 @@ public:
     */
     static inline void step()
     {
-#if NUM_EXTRUDER==1
-        WRITE(EXT0_STEP_PIN,HIGH);
+#if NUM_EXTRUDER == 1
+        WRITE(EXT0_STEP_PIN, HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT0_JAM_PIN) && EXT0_JAM_PIN > -1
+        TEST_EXTRUDER_JAM(0)
+#endif
 #else
         switch(Extruder::current->id)
         {
         case 0:
-#if NUM_EXTRUDER>0
+#if NUM_EXTRUDER > 0
             WRITE(EXT0_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT0_JAM_PIN) && EXT0_JAM_PIN > -1
+            TEST_EXTRUDER_JAM(0)
+#endif
 #if FEATURE_DITTO_PRINTING
             if(Extruder::dittoMode)
             {
                 WRITE(EXT1_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT1_JAM_PIN) && EXT1_JAM_PIN > -1
+                TEST_EXTRUDER_JAM(1)
+#endif
 #if NUM_EXTRUDER > 2
                 if(Extruder::dittoMode > 1)
                 {
                     WRITE(EXT2_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT2_JAM_PIN) && EXT2_JAM_PIN > -1
+                    TEST_EXTRUDER_JAM(2)
+#endif
                 }
 #endif
 #if NUM_EXTRUDER > 3
                 if(Extruder::dittoMode > 2)
                 {
                     WRITE(EXT3_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT3_JAM_PIN) && EXT3_JAM_PIN > -1
+                    TEST_EXTRUDER_JAM(3)
+#endif
                 }
 #endif
             }
 #endif
 #endif
             break;
-#if defined(EXT1_STEP_PIN) && NUM_EXTRUDER>1
+#if defined(EXT1_STEP_PIN) && NUM_EXTRUDER > 1
         case 1:
             WRITE(EXT1_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT1_JAM_PIN) && EXT1_JAM_PIN > -1
+            TEST_EXTRUDER_JAM(1)
+#endif
             break;
 #endif
-#if defined(EXT2_STEP_PIN) && NUM_EXTRUDER>2
+#if defined(EXT2_STEP_PIN) && NUM_EXTRUDER > 2
         case 2:
             WRITE(EXT2_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT2_JAM_PIN) && EXT2_JAM_PIN > -1
+            TEST_EXTRUDER_JAM(2)
+#endif
             break;
 #endif
-#if defined(EXT3_STEP_PIN) && NUM_EXTRUDER>3
+#if defined(EXT3_STEP_PIN) && NUM_EXTRUDER > 3
         case 3:
             WRITE(EXT3_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT3_JAM_PIN) && EXT3_JAM_PIN > -1
+            TEST_EXTRUDER_JAM(3)
+#endif
             break;
 #endif
-#if defined(EXT4_STEP_PIN) && NUM_EXTRUDER>4
+#if defined(EXT4_STEP_PIN) && NUM_EXTRUDER > 4
         case 4:
             WRITE(EXT4_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT4_JAM_PIN) && EXT4_JAM_PIN > -1
+            TEST_EXTRUDER_JAM(4)
+#endif
             break;
 #endif
-#if defined(EXT5_STEP_PIN) && NUM_EXTRUDER>5
+#if defined(EXT5_STEP_PIN) && NUM_EXTRUDER > 5
         case 5:
             WRITE(EXT5_STEP_PIN,HIGH);
+#if EXTRUDER_JAM_CONTROL && defined(EXT5_JAM_PIN) && EXT5_JAM_PIN > -1
+            TEST_EXTRUDER_JAM(5)
+#endif
             break;
 #endif
         }
@@ -244,6 +356,8 @@ public:
 
     Call this function only, if interrupts are disabled.
     */
+
+
     static inline void unstep()
     {
 #if NUM_EXTRUDER == 1
@@ -305,14 +419,12 @@ public:
     /** \brief Activates the extruder stepper and sets the direction. */
     static inline void setDirection(uint8_t dir)
     {
-#if MIXING_EXTRUDER > 0
-        mixingDir = dir;
-#endif
 #if NUM_EXTRUDER == 1
         if(dir)
             WRITE(EXT0_DIR_PIN, !EXT0_INVERSE);
         else
             WRITE(EXT0_DIR_PIN, EXT0_INVERSE);
+        RESET_EXTRUDER_JAM(0, dir)
 #else
         switch(Extruder::current->id)
         {
@@ -322,6 +434,7 @@ public:
                 WRITE(EXT0_DIR_PIN,!EXT0_INVERSE);
             else
                 WRITE(EXT0_DIR_PIN,EXT0_INVERSE);
+            RESET_EXTRUDER_JAM(0, dir)
 #if FEATURE_DITTO_PRINTING
             if(Extruder::dittoMode)
             {
@@ -329,6 +442,7 @@ public:
                     WRITE(EXT1_DIR_PIN,!EXT1_INVERSE);
                 else
                     WRITE(EXT1_DIR_PIN,EXT1_INVERSE);
+                RESET_EXTRUDER_JAM(1, dir)
 #if NUM_EXTRUDER > 2
                 if(Extruder::dittoMode > 1)
                 {
@@ -336,6 +450,7 @@ public:
                         WRITE(EXT2_DIR_PIN,!EXT2_INVERSE);
                     else
                         WRITE(EXT2_DIR_PIN,EXT2_INVERSE);
+                    RESET_EXTRUDER_JAM(2, dir)
                 }
 #endif
 #if NUM_EXTRUDER > 3
@@ -345,6 +460,7 @@ public:
                         WRITE(EXT3_DIR_PIN,!EXT3_INVERSE);
                     else
                         WRITE(EXT3_DIR_PIN,EXT3_INVERSE);
+                    RESET_EXTRUDER_JAM(3, dir)
                 }
 #endif
             }
@@ -357,6 +473,7 @@ public:
                 WRITE(EXT1_DIR_PIN,!EXT1_INVERSE);
             else
                 WRITE(EXT1_DIR_PIN,EXT1_INVERSE);
+            RESET_EXTRUDER_JAM(1, dir)
             break;
 #endif
 #if defined(EXT2_DIR_PIN) && NUM_EXTRUDER > 2
@@ -365,6 +482,7 @@ public:
                 WRITE(EXT2_DIR_PIN,!EXT2_INVERSE);
             else
                 WRITE(EXT2_DIR_PIN,EXT2_INVERSE);
+            RESET_EXTRUDER_JAM(2, dir)
             break;
 #endif
 #if defined(EXT3_DIR_PIN) && NUM_EXTRUDER > 3
@@ -373,6 +491,7 @@ public:
                 WRITE(EXT3_DIR_PIN,!EXT3_INVERSE);
             else
                 WRITE(EXT3_DIR_PIN,EXT3_INVERSE);
+            RESET_EXTRUDER_JAM(3, dir)
             break;
 #endif
 #if defined(EXT4_DIR_PIN) && NUM_EXTRUDER > 4
@@ -381,6 +500,7 @@ public:
                 WRITE(EXT4_DIR_PIN,!EXT4_INVERSE);
             else
                 WRITE(EXT4_DIR_PIN,EXT4_INVERSE);
+            RESET_EXTRUDER_JAM(4, dir)
             break;
 #endif
 #if defined(EXT5_DIR_PIN) && NUM_EXTRUDER > 5
@@ -389,6 +509,7 @@ public:
                 WRITE(EXT5_DIR_PIN,!EXT5_INVERSE);
             else
                 WRITE(EXT5_DIR_PIN,EXT5_INVERSE);
+            RESET_EXTRUDER_JAM(5, dir)
             break;
 #endif
         }

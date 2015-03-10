@@ -165,6 +165,8 @@ Overridden if EEPROM activated.*/
 // because at startup you already need 7 seconds until heater starts to rise temp. for sensor
 // then you have 3 seconds of increased heating to reach 1°„C.
 #define DECOUPLING_TEST_MIN_TEMP_RISE 1
+// Set to 1 if you want firmware to kill print on decouple
+#define KILL_IF_SENSOR_DEFECT 0
 
 // for each extruder, fan will stay on until extruder temperature is below this value
 #define EXTRUDER_FAN_COOL_TEMP 50
@@ -1137,6 +1139,18 @@ WARNING: Servos can draw a considerable amount of current. Make sure your system
 #define SERVO1_PIN 6
 #define SERVO2_PIN 5
 #define SERVO3_PIN 4
+/* for set servo(s) at designed neutral position at power-up. Values < 500 mean no start position */
+#define SERVO0_NEUTRAL_POS  1300
+#define SERVO1_NEUTRAL_POS  -1
+#define SERVO2_NEUTRAL_POS  -1
+#define SERVO3_NEUTRAL_POS  -1
+/** Set to servo number +1 to control that servo in ui menu. 0 disables ui control. */
+#define UI_SERVO_CONTROL 0
+/** Some fans won't start for low values, but would run if started with higher power at the beginning.
+This defines the full power duration before returning to set value. Time is in milliseconds */
+#define FAN_KICKSTART_TIME  200
+
+
 
 /* A watchdog resets the printer, if a signal is not send within predifined time limits. That way we can be sure that the board
 is always running and is not hung up for some unknown reason. 
@@ -1150,17 +1164,19 @@ See: AdditionalArduinoFiles: README.txt on how to install them.
 
 #define FEATURE_Z_PROBE false
 #define Z_PROBE_PIN -1  // 63
-#define Z_PROBE_PULLUP true
-#define Z_PROBE_ON_HIGH true
+#define Z_PROBE_PULLUP 1
+#define Z_PROBE_ON_HIGH 1
 #define Z_PROBE_X_OFFSET 0
 #define Z_PROBE_Y_OFFSET 0
+#define Z_PROBE_BED_DISTANCE 5.0 // Higher than max bed level distance error in mm
+
 // Waits for a signal to start. Valid signals are probe hit and ok button.
 // This is needful if you have the probe trigger by hand.
-#define Z_PROBE_WAIT_BEFORE_TEST 1
+#define Z_PROBE_WAIT_BEFORE_TEST 0
 /** Speed of z-axis in mm/s when probing */
 #define Z_PROBE_SPEED 2
 #define Z_PROBE_XY_SPEED 150
-#define Z_PROBE_SWITCHING_DISTANCE 1.5 // Distance to safely switch off probe
+#define Z_PROBE_SWITCHING_DISTANCE 1.5 // Distance to safely switch off probe after it was activated
 #define Z_PROBE_REPETITIONS 5 // Repetitions for probing at one point. 
 /** The height is the difference between activated probe position and nozzle height. */
 #define Z_PROBE_HEIGHT 39.91
@@ -1293,6 +1309,8 @@ The following settings override uiconfig.h!
 13 or CONTROLLER_RAMBO = SeeMeCNC Display on Rambo (ORION)
 14 or CONTROLLER_OPENHARDWARE_LCD2004 = OpenHardware.co.za LCD2004 V2014
 15 or CONTROLLER_SANGUINOLOLU_PANELOLU2 = Sanguinololu + Panelolu2
+17 or CONTROLLER_MIREGLI 17
+18 or CONTROLLER_GATE_3NOVATICA Gate Controller from 3Novatica
 */
 #define FEATURE_CONTROLLER CONTROLLER_RADDS
 
@@ -1338,6 +1356,9 @@ Select an encoder speed from 0 = fastest to 2 = slowest that results in one menu
 */
 #define UI_ENCODER_SPEED 2
 
+// Set to 1 to reverse encoder direction
+#define UI_REVERSE_ENCODER 0
+
 /* There are 2 ways to change positions. You can move by increments of 1/0.1 mm resulting in more menu entries
 and requiring many turns on your encode. The alternative is to enable speed dependent positioning. It will change
 the move distance depending on the speed you turn the encoder. That way you can move very fast and very slow in the
@@ -1345,6 +1366,9 @@ same setting.
 
 */
 #define UI_SPEEDDEPENDENT_POSITIONING 1
+
+/** If set to 1 faster turning the wheel makes larger jumps. Helps for faster navgation. */
+#define UI_DYNAMIC_ENCODER_SPEED 1          // enable dynamic rotary encoder speed
 
 /** \brief bounce time of keys in milliseconds */
 #define UI_KEY_BOUNCETIME 10
@@ -1383,5 +1407,15 @@ Values must be in range 1..255
 #define UI_SET_EXTRUDER_FEEDRATE 2 // mm/sec
 #define UI_SET_EXTRUDER_RETRACT_DISTANCE 3 // mm
 
+/*
+#define USER_KEY1_PIN     UI_DISPLAY_D5_PIN      // D5 to display (not used for graphics controller), change to other pin if you use character LCD !
+#define USER_KEY1_ACTION  UI_ACTION_FAN_SUSPEND
+#define USER_KEY2_PIN     UI_DISPLAY_D6_PIN      // D6 to display (not used for graphics controller)...
+#define USER_KEY2_ACTION  UI_ACTION_SD_PRI_PAU_CONT
+#define USER_KEY3_PIN     UI_DISPLAY_D7_PIN      // D7 to display (not used for graphics controller)...
+#define USER_KEY3_ACTION  UI_ACTION_LIGHTS_ONOFF
+#define USER_KEY4_PIN     -1
+#define USER_KEY4_ACTION  UI_ACTION_DUMMY
+*/
 #endif
 
