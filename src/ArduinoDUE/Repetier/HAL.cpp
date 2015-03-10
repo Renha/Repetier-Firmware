@@ -601,7 +601,7 @@ void HAL::servoMicroseconds(uint8_t servo,int microsec, uint16_t autoOff) {
     if(microsec > 2500) microsec = 2500;
     servoTimings[servo] = (unsigned int)(((F_CPU_TRUE / SERVO_PRESCALE) / 
                                          1000000) * microsec);
-    servoAutoOff[servo] = (ms) ? (autoOff / 20) : 0; 
+    servoAutoOff[servo] = (microsec) ? (autoOff / 20) : 0; 
 }
  
 
@@ -854,7 +854,7 @@ void PWM_TIMER_VECTOR ()
         if((pwm_cooler_pos_set[5] = extruder[5].coolerPWM)>0) WRITE(EXT5_EXTRUDER_COOLER_PIN, 1);
 #endif
 #endif
-#if FAN_BOARD_PIN > -1 && !defined(SHARED_COOLER_BOARD_EXT)
+#if FAN_BOARD_PIN > -1 && SHARED_COOLER_BOARD_EXT == 0
         if((pwm_pos_set[NUM_EXTRUDER + 1] = pwm_pos[NUM_EXTRUDER + 1]) > 0) WRITE(FAN_BOARD_PIN, 1);
 #endif
 #if FAN_PIN>-1 && FEATURE_FAN_CONTROL
@@ -945,7 +945,7 @@ void PWM_TIMER_VECTOR ()
 #endif
 #endif
 #endif
-#if FAN_BOARD_PIN > -1 && !defined(SHARED_COOLER_BOARD_EXT)
+#if FAN_BOARD_PIN > -1 && SHARED_COOLER_BOARD_EXT == 0
 #if PDM_FOR_COOLER
     pulseDensityModulate(FAN_BOARD_PIN, pwm_pos[NUM_EXTRUDER + 1], pwm_pos_set[NUM_EXTRUDER + 1], false);
 #else
